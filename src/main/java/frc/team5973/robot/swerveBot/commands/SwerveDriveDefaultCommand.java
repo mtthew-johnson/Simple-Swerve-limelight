@@ -1,4 +1,4 @@
-package frc.team5973.robot.rapidreact.commands.defaultCommands;
+package frc.team5973.robot.swerveBot.commands;
 
 import java.util.Map;
 import java.util.function.BooleanSupplier;
@@ -10,7 +10,6 @@ import edu.wpi.first.util.sendable.SendableRegistry;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.CommandBase;
 
-import frc.team5973.robot.rapidreact.DetectionData;
 import frc.team5973.robot.subsystems.Limelight;
 import frc.team5973.robot.subsystems.SwerveDrive;
 import frc.team5973.robot.subsystems.SwerveDrive.Axis;
@@ -19,12 +18,10 @@ import frc.team5973.robot.subsystems.SwerveDrive.DriveMode;
 public class SwerveDriveDefaultCommand extends CommandBase {
     final SwerveDrive drive;
     final Limelight limelight;
-    final DetectionData detectionData;
     final Map<Axis, DoubleSupplier> axisMap;
     final Map<DriveMode, BooleanSupplier> buttonMap;
 
-    private final double DEADBAND_LOW;
-    private final double DEADBAND_HIGH;
+    private final double DEADBAND;
 
     private final double SPEED_NORMAL;
     private final double SPEED_SAFE;
@@ -34,17 +31,14 @@ public class SwerveDriveDefaultCommand extends CommandBase {
     private double comboStartTimeSafe  = 0;
     private double comboStartTimeField = 0;
     private double comboStartTimeGoal  = 0;
-    private double comboStartTimeBall  = 0;
     
     private boolean alreadyToggledSafeMode  = false;
     private boolean alreadyToggledFieldMode = false;
     private boolean alreadyToggledGoalMode  = false;
-    private boolean alreadyToggledBallMode   = false;
 
     private boolean safeMode          = false;
     private boolean fieldOrientedMode = false;
     private boolean goalOrientedMode  = false;
-    private boolean ballOrientedMode  = false;
 
     private double buttonDelay = 0.0;
 
@@ -59,28 +53,22 @@ public class SwerveDriveDefaultCommand extends CommandBase {
     private final int fieldOriented = 1;
     private final int robotOriented = 2;
     private final int goalOriented  = 3;
-    private final int ballOriented  = 4;
 
-    private Timer timer = new Timer();
 
     public SwerveDriveDefaultCommand(final SwerveDrive drive,
                                      final Limelight limelight,
-                                     final DetectionData detectionData, 
-                                     final double DEADBAND_HIGH,
-                                     final double DEADBAND_LOW,
+                                     final double DEADBAND,
                                      final double SPEED_NORMAL,
                                      final double SPEED_SAFE,
                                      final Map<Axis, DoubleSupplier> axisMap,
                                      final Map<DriveMode, BooleanSupplier> buttonMap) {
         
-        this.detectionData = detectionData;
         this.limelight     = limelight;
         this.buttonMap     = buttonMap;
         this.axisMap       = axisMap;
         this.drive         = drive;
         
-        this.DEADBAND_HIGH = DEADBAND_HIGH;
-        this.DEADBAND_LOW  = DEADBAND_LOW;
+        this.DEADBAND = DEADBAND;
         this.SPEED_NORMAL = SPEED_NORMAL;
         this.SPEED_SAFE   = SPEED_SAFE;
     
@@ -92,21 +80,18 @@ public class SwerveDriveDefaultCommand extends CommandBase {
     @Override
 	public void execute() {
         
+        //determine whether to use safe mode or not
         speed = safeMode ? SPEED_SAFE : SPEED_NORMAL;
         
-        // forward =  MathUtil.clamp(MathUtil.applyDeadband(applyRadialDeadZoneX(axis(Axis.FORWARD), axis(Axis.STRAFE), DEADBAND_LOW, DEADBAND_HIGH), DEADBAND_LOW) * speed, -1, 1);
-        // strafe  = -MathUtil.clamp(MathUtil.applyDeadband(applyRadialDeadZoneY(axis(Axis.FORWARD), axis(Axis.STRAFE), DEADBAND_LOW, DEADBAND_HIGH), DEADBAND_LOW) * speed, -1, 1);
-        // rotate  = -MathUtil.clamp(MathUtil.applyDeadband(axis(Axis.TURN),    DEADBAND_LOW) * speed, -1, 1);
-
-        forward =   MathUtil.clamp(MathUtil.applyDeadband(axis(Axis.FORWARD), DEADBAND_LOW) * speed, -1, 1);
-        strafe  =  -MathUtil.clamp(MathUtil.applyDeadband(axis(Axis.STRAFE),  DEADBAND_LOW) * speed, -1, 1);
+        //controller inputs
+        forward =   MathUtil.clamp(MathUtil.applyDeadband(axis(Axis.FORWARD), DEADBAND) * speed, -1, 1);
+        strafe  =  -MathUtil.clamp(MathUtil.applyDeadband(axis(Axis.STRAFE),  DEADBAND) * speed, -1, 1);
         rotate  =  -MathUtil.clamp(MathUtil.applyDeadband(axis(Axis.TURN),    0.1) * speed, -1, 1);
 
-        if(driveMode == goalOriented || driveMode == ballOriented) {
+        if(driveMode == goalOriented) {
             yawCorrection = 0;
         } else if (driveMode == robotOriented || driveMode == fieldOriented) {
             yawCorrection = drive.correctHeading(0.004, forward, strafe, rotate);
-            //System.out.println(forward);
 
         }
         
@@ -133,7 +118,7 @@ public class SwerveDriveDefaultCommand extends CommandBase {
         }
 
         // toggle POV and field mode
-        if(button(DriveMode.FIELDMODE) && !button(DriveMode.GOALMODE) && !button(DriveMode.BALLMODE)) {
+        if(button(DriveMode.FIELDMODE) && !button(DriveMode.GOALMODE)) {
 
             if(comboStartTimeField == 0) {
                 comboStartTimeField = Timer.getFPGATimestamp();
@@ -154,7 +139,7 @@ public class SwerveDriveDefaultCommand extends CommandBase {
         }
 
         //toggle goal centric mode
-        if(button(DriveMode.GOALMODE) && !button(DriveMode.FIELDMODE) && !button(DriveMode.BALLMODE) && limelight.isTargetValid()) {
+        if(button(DriveMode.GOALMODE) && !button(DriveMode.FIELDMODE) && limelight.isTargetValid()) {
             
             if(comboStartTimeGoal == 0) {
                 comboStartTimeGoal = Timer.getFPGATimestamp();
@@ -166,7 +151,7 @@ public class SwerveDriveDefaultCommand extends CommandBase {
                 System.out.println("Switching to " + (goalOrientedMode ? "Goal Oriented" : "Field Oriented") + ".");
             }
             
-        } else if (button(DriveMode.GOALMODE) && !button(DriveMode.FIELDMODE) && !button(DriveMode.BALLMODE) && !limelight.isTargetValid()) {
+        } else if (button(DriveMode.GOALMODE) && !button(DriveMode.FIELDMODE) && !limelight.isTargetValid()) {
 
             comboStartTimeGoal = 0;
             alreadyToggledGoalMode = false;
@@ -177,31 +162,6 @@ public class SwerveDriveDefaultCommand extends CommandBase {
 
             comboStartTimeGoal = 0;
             alreadyToggledGoalMode = false;
-        }
-
-        //toggle ball centric mode
-        if(button(DriveMode.BALLMODE) && !button(DriveMode.GOALMODE) && !button(DriveMode.FIELDMODE)) { //&& detectionData.isAnyBallDetected()) {
-
-            if(comboStartTimeBall == 0) {
-                comboStartTimeBall = Timer.getFPGATimestamp();
-            } else if(Timer.getFPGATimestamp() - comboStartTimeBall >= buttonDelay && !alreadyToggledBallMode) {
-                ballOrientedMode = !goalOrientedMode;
-
-                alreadyToggledBallMode = true;
-                driveMode = ballOrientedMode ? ballOriented : fieldOriented;
-                System.out.println("Switching to " + (ballOrientedMode ? "Ball Oriented" : "Field Oriented") + ".");
-            }
-
-        } else if(button(DriveMode.BALLMODE) && !button(DriveMode.GOALMODE) && !button(DriveMode.FIELDMODE) && false) { //&& !detectionData.isAnyBallDetected()) {
-
-            comboStartTimeBall = 0;
-            alreadyToggledBallMode = false;
-            
-            driveMode = fieldOriented;
-            System.out.println("No valid target to change drive mode" + "\n Switching to Field Oriented Mode");
-        } else {
-            comboStartTimeBall = 0;
-            alreadyToggledBallMode = false;
         }
 
         if(button(DriveMode.ZERO_GYRO)) {
@@ -223,32 +183,11 @@ public class SwerveDriveDefaultCommand extends CommandBase {
                                                  rotate - limelight.limelightXPID(), 
                                                  true);
                     break;
-            case ballOriented: drive.swerveDrive(-forward + detectionData.piYPID("red"), 
-                                                 strafe, 
-                                                 -rotate - detectionData.piXPID("red"), 
-                                                  false);
-                    break;
             default: drive.swerveDrive(forward, strafe, rotate - yawCorrection, true);
-                     break;
+                    break;
         }
 
-        //System.out.println(yawCorrection);
-
-
-
-        // drive.driveDistance(12, -0.3, 0, 0);
-
-        // timer.reset();
-        // timer.start();
-        // while(!timer.hasElapsed(30)) {}
-
-        //System.out.println(detectionData.getOffsetX("blue"));
-        //System.out.println(detectionData.piYPID("red"));
-
-        //System.out.println(driveMode);
-
-        //robot odometry
-        //drive.calculateRobotPosition();
+       
 	
 	}
 
@@ -259,53 +198,6 @@ public class SwerveDriveDefaultCommand extends CommandBase {
     private final boolean button(DriveMode button) {
         return buttonMap.get(button).getAsBoolean();
     }
-
-    private double applyRadialDeadZoneX(double x, double y, double deadZoneLow, double deadZoneHigh) {
-        double output[] = {0,0};
-        double mag = Math.sqrt(x*x + y*y);
-    
-        if (mag > deadZoneLow)
-        {
-            // scale such that output magnitude is in the range [0.0f, 1.0f]
-            double legalRange = 1.0d - deadZoneHigh - deadZoneLow;
-            double normalizedMag = Math.min(1.0d, (mag - deadZoneLow) / legalRange);
-            double scale = normalizedMag / mag; 
-            output[0] = x * scale;
-            output[1] = y * scale;
-        }
-        else
-        {
-            // stick is in the inner dead zone
-            output[0] = 0.0d;
-            output[1] = 0.0d;
-        }
-
-        return output[0];
-    }
-
-    private double applyRadialDeadZoneY(double x, double y, double deadZoneLow, double deadZoneHigh) {
-        double output[] = {0,0};
-        double mag = Math.sqrt(x*x + y*y);
-    
-        if (mag > deadZoneLow)
-        {
-            // scale such that output magnitude is in the range [0.0f, 1.0f]
-            double legalRange = 1.0d - deadZoneHigh - deadZoneLow;
-            double normalizedMag = Math.min(1.0d, (mag - deadZoneLow) / legalRange);
-            double scale = normalizedMag / mag; 
-            output[0] = x * scale;
-            output[1] = y * scale;
-        }
-        else
-        {
-            // stick is in the inner dead zone
-            output[0] = 0.0d;
-            output[1] = 0.0d;
-        }
-
-        return output[1];
-    }
-
 
 	@Override
 	public void initSendable(SendableBuilder builder) {
